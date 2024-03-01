@@ -27,6 +27,10 @@ if __name__ == '__main__':
     opt = parser.parse_args()
     cfg = utils.utils.load_datafile(opt.data)
 
+    # Define checkpoint interval (e.g., save checkpoint every 10 epochs)
+    checkpoint_interval = 10
+    checkpoint_dir = '/content/drive/My Drive/checkpoints'
+
     print("训练配置:")
     print(cfg)
 
@@ -129,6 +133,12 @@ if __name__ == '__main__':
             pbar.set_description(info)
 
             batch_num += 1
+
+            # Save checkpoints
+            if epoch % checkpoint_interval == 0:
+                checkpoint_path = f"{checkpoint_dir}/model_epoch_{epoch}.pth"
+                torch.save(model.state_dict(), checkpoint_path)
+                print(f"Checkpoint saved at {checkpoint_path}")
 
         # 模型保存
         if epoch % 10 == 0 and epoch > 0:
