@@ -19,4 +19,4 @@ anchors=10.76057587,72.8847571,44.61600578,43.58258929,45.2265677,89.26453343,76
 [data-configure]
 train=/content/train.txt
 val=/content/val.txt
-names=./data/coco.names
+names=/content/Yolo-FastestV2/category.names
