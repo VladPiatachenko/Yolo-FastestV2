@@ -18,25 +18,30 @@ import utils.utils
 import utils.datasets
 import model.detector
 
-
 if __name__ == '__main__':
     # 指定训练配置文件
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default='',
                         help='Specify training profile *.data')
+    parser.add_argument('--checkpoint', type=str, default='',
+                        help='Path to the checkpoint file to continue training from')
     opt = parser.parse_args()
     cfg = utils.utils.load_datafile(opt.data)
 
     # Define checkpoint interval (e.g., save checkpoint every 10 epochs)
-    checkpoint_interval = 10
+    checkpoint_interval = 2
     checkpoint_dir = '/content/drive/My Drive/checkpoints'
 
     print("训练配置:")
     print(cfg)
 
+    # Create the checkpoint directory if it does not exist
+    if not os.path.exists(checkpoint_dir):
+        os.makedirs(checkpoint_dir)
+
     # 数据集加载
-    train_dataset = utils.datasets.TensorDataset(cfg["train"], cfg["width"], cfg["height"], imgaug = True)
-    val_dataset = utils.datasets.TensorDataset(cfg["val"], cfg["width"], cfg["height"], imgaug = False)
+    train_dataset = utils.datasets.TensorDataset(cfg["train"], cfg["width"], cfg["height"], imgaug=True)
+    val_dataset = utils.datasets.TensorDataset(cfg["val"], cfg["width"], cfg["height"], imgaug=False)
 
     batch_size = int(cfg["batch_size"] / cfg["subdivisions"])
     nw = min([os.cpu_count(), batch_size if batch_size > 1 else 0, 8])
@@ -50,7 +55,7 @@ if __name__ == '__main__':
                                                    drop_last=True,
                                                    persistent_workers=True
                                                    )
-    #验证集
+    # 验证集
     val_dataloader = torch.utils.data.DataLoader(val_dataset,
                                                  batch_size=batch_size,
                                                  shuffle=False,
@@ -76,10 +81,18 @@ if __name__ == '__main__':
 
     # 加载预训练模型参数
     if load_param == True:
-        model.load_state_dict(torch.load(premodel_path, map_location=device), strict = False)
+        model.load_state_dict(torch.load(premodel_path, map_location=device), strict=False)
         print("Load finefune model param: %s" % premodel_path)
     else:
         print("Initialize weights: model/backbone/backbone.pth")
+
+    # Load checkpoint if specified
+    if opt.checkpoint != '':
+        checkpoint = torch.load(opt.checkpoint, map_location=device)
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        epoch = checkpoint['epoch']
+        print(f"Loaded checkpoint '{opt.checkpoint}' (epoch {epoch})")
 
     # 构建SGD优化器
     optimizer = optim.SGD(params=model.parameters(),
@@ -95,8 +108,11 @@ if __name__ == '__main__':
 
     print('Starting training for %g epochs...' % cfg["epochs"])
 
+    # Start from the specified epoch or the next epoch after the loaded checkpoint
+    start_epoch = epoch + 1 if 'epoch' in locals() else 0
+
     batch_num = 0
-    for epoch in range(cfg["epochs"]):
+    for epoch in range(start_epoch, cfg["epochs"]):
         model.train()
         pbar = tqdm(train_dataloader)
 
@@ -113,13 +129,13 @@ if __name__ == '__main__':
             # 反向传播求解梯度
             total_loss.backward()
 
-            #学习率预热
+            # 学习率预热
             for g in optimizer.param_groups:
-                warmup_num =  5 * len(train_dataloader)
+                warmup_num = 5 * len(train_dataloader)
                 if batch_num <= warmup_num:
-                    scale = math.pow(batch_num/warmup_num, 4)
+                    scale = math.pow(batch_num / warmup_num, 4)
                     g['lr'] = cfg["learning_rate"] * scale
-                    
+
                 lr = g["lr"]
 
             # 更新模型参数
@@ -129,29 +145,33 @@ if __name__ == '__main__':
 
             # 打印相关信息
             info = "Epoch:%d LR:%f CIou:%f Obj:%f Cls:%f Total:%f" % (
-                    epoch, lr, iou_loss, obj_loss, cls_loss, total_loss)
+                epoch, lr, iou_loss, obj_loss, cls_loss, total_loss)
             pbar.set_description(info)
 
             batch_num += 1
 
             # Save checkpoints
             if epoch % checkpoint_interval == 0:
-                checkpoint_path = f"{checkpoint_dir}/model_epoch_{epoch}.pth"
-                torch.save(model.state_dict(), checkpoint_path)
+                checkpoint_path = os.path.join(checkpoint_dir, f"model_epoch_{epoch}.pth")
+                torch.save({
+                    'epoch': epoch,
+                    'model': model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                }, checkpoint_path)
                 print(f"Checkpoint saved at {checkpoint_path}")
 
         # 模型保存
         if epoch % 10 == 0 and epoch > 0:
             model.eval()
-            #模型评估
+            # 模型评估
             print("computer mAP...")
             _, _, AP, _ = utils.utils.evaluation(val_dataloader, cfg, model, device)
             print("computer PR...")
             precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
-            print("Precision:%f Recall:%f AP:%f F1:%f"%(precision, recall, AP, f1))
+            print("Precision:%f Recall:%f AP:%f F1:%f" % (precision, recall, AP, f1))
 
             torch.save(model.state_dict(), "weights/%s-%d-epoch-%fap-model.pth" %
-                      (cfg["model_name"], epoch, AP))
+                       (cfg["model_name"], epoch, AP))
 
         # 学习率调整
         scheduler.step()

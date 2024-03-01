@@ -116,7 +116,7 @@ def build_target(preds, targets, cfg, device):
 
             # Append
             a = t[:, 6].long()  # anchor indices
-            indices.append((b, a, gj.clamp_(0, gain[3] - 1), gi.clamp_(0, gain[2] - 1)))  # image, anchor, grid indices
+            indices.append((b, a, gj.long().clamp(0, int(gain[3].item()) - 1), gi.long().clamp(0, int(gain[2].item()) - 1)))  # image, anchor, grid indices
             tbox.append(torch.cat((gxy - gij, gwh), 1))  # box
             anch.append(anchors_cfg[a])  # anchors
             tcls.append(c)  # class
