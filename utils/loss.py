@@ -55,9 +55,9 @@ def build_target(preds, targets, cfg, device):
     #anchor box数量, 当前batch的标签数量
     anchor_num, label_num = cfg["anchor_num"], targets.shape[0]
 
-    # Load anchor configuration
+    #加载anchor配置
     anchors = np.array(cfg["anchors"])
-    anchors = torch.from_numpy(anchors.reshape(2, anchor_num, 2)).to(device)
+    anchors = torch.from_numpy(anchors.reshape(len(preds) // 3, anchor_num, 2)).to(device)
 
     gain = torch.ones(7, device = device)
 
