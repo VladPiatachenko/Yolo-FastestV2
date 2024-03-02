@@ -98,6 +98,9 @@ if __name__ == '__main__':
     # Initialize epoch to 0 if it's not found in local variables
     epoch = 0
 
+    # Initialize batch_num
+    batch_num = 0
+
     # Start from the specified epoch or the next epoch after the loaded checkpoint
     start_epoch = epoch + 1 if 'epoch' in locals() else 0
 
