@@ -12,6 +12,7 @@ import utils.loss
 import utils.utils
 import utils.datasets
 import model.detector
+import re
 
 if __name__ == '__main__':
     # Specify the training configuration file
@@ -103,6 +104,13 @@ if __name__ == '__main__':
 
     # Start from the specified epoch or the next epoch after the loaded checkpoint
     start_epoch = epoch + 1 if 'epoch' in locals() else 0
+
+    # Extract the starting epoch number from the checkpoint filename
+    if opt.checkpoint:
+        start_epoch_match = re.search(r'model_epoch_(\d+)\.pth', opt.checkpoint)
+        if start_epoch_match:
+            start_epoch = int(start_epoch_match.group(1))
+            print("Starting epoch extracted from checkpoint filename:", start_epoch)
 
     try:
         for epoch in range(start_epoch, cfg["epochs"]):
