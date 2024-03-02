@@ -64,42 +64,45 @@ def write_anchors_to_file(centroids,X,anchor_file, width_in_cfg_file, height_in_
     f.write('%f\n'%(avg_IOU(X,centroids)))
     print()
 
-def kmeans(X,centroids,eps,anchor_file, width_in_cfg_file, height_in_cfg_file):
-    
+
+def kmeans(X, centroids, eps, anchor_file, width_in_cfg_file, height_in_cfg_file):
     N = X.shape[0]
     iterations = 0
-    k,dim = centroids.shape
-    prev_assignments = np.ones(N)*(-1)    
+    k, dim = centroids.shape
+    prev_assignments = np.ones(N) * (-1)
     iter = 0
-    old_D = np.zeros((N,k))
+    old_D = np.zeros((N, k))
 
     while True:
-        D = [] 
-        iter+=1           
+        D = []
+        iter += 1
         for i in range(N):
-            d = 1 - IOU(X[i],centroids)
+            d = 1 - IOU(X[i], centroids)
             D.append(d)
-        D = np.array(D) # D.shape = (N,k)
-        
-        print("iter {}: dists = {}".format(iter,np.sum(np.abs(old_D-D))))
-            
-        #assign samples to centroids 
-        assignments = np.argmin(D,axis=1)
-        
-        if (assignments == prev_assignments).all() :
-            print("Centroids = ",centroids)
-            write_anchors_to_file(centroids,X,anchor_file, width_in_cfg_file, height_in_cfg_file)
+        D = np.array(D)  # D.shape = (N,k)
+
+        print("iter {}: dists = {}".format(iter, np.sum(np.abs(old_D - D))))
+
+        # assign samples to centroids
+        assignments = np.argmin(D, axis=1)
+
+        if (assignments == prev_assignments).all():
+            print("Centroids = ", centroids)
+            write_anchors_to_file(centroids, X, anchor_file, width_in_cfg_file, height_in_cfg_file)
             return
 
-        #calculate new centroids
+        # calculate new centroids
         centroid_sums = np.zeros((k, dim), float)
         for i in range(N):
-            centroid_sums[assignments[i]]+=X[i]        
-        for j in range(k):            
-            centroids[j] = centroid_sums[j]/(np.sum(assignments==j))
-        
-        prev_assignments = assignments.copy()     
-        old_D = D.copy()  
+            centroid_sums[assignments[i]] += X[i]
+
+        for j in range(k):
+            # Check if there are any samples assigned to this centroid
+            if np.sum(assignments == j) != 0:
+                centroids[j] = centroid_sums[j] / (np.sum(assignments == j))
+
+        prev_assignments = assignments.copy()
+        old_D = D.copy()
 
 def main(argv):
     parser = argparse.ArgumentParser()
