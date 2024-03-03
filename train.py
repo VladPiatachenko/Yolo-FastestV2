@@ -75,19 +75,36 @@ if __name__ == '__main__':
     model = model.detector.Detector(cfg["classes"], cfg["anchor_num"], load_param).to(device)
     summary(model, input_size=(3, cfg["height"], cfg["width"]))
 
-    # Load the parameters of the pre-trained model
-    if load_param:
-        model.load_state_dict(torch.load(premodel_path, map_location=device), strict=False)
-        print("Loaded fine-tuned model parameters from: %s" % premodel_path)
-    else:
-        print("Initialize weights from: model/backbone/backbone.pth")
-
     # Build the SGD optimizer
     optimizer = optim.SGD(params=model.parameters(),
                           lr=cfg["learning_rate"],
                           momentum=0.949,
                           weight_decay=0.0005,
                           )
+
+    # Load the parameters of the pre-trained model
+    if load_param:
+        print("Loading pre-trained model parameters from:", premodel_path)
+        model_state_dict = torch.load(premodel_path, map_location=device)
+        model.load_state_dict(model_state_dict, strict=False)
+        print("Model state loaded successfully.")
+        print("Model parameters:")
+        for name, param in model.named_parameters():
+            print(name, param.size())
+
+        # Print optimizer state before loading
+        print("Optimizer state before loading checkpoint:")
+        for param_group in optimizer.param_groups:
+            print("Learning rate:", param_group['lr'])
+
+        optimizer.load_state_dict(model_state_dict['optimizer'])
+
+        # Print optimizer state after loading
+        print("Optimizer state after loading checkpoint:")
+        for param_group in optimizer.param_groups:
+            print("Learning rate:", param_group['lr'])
+    else:
+        print("Initialize weights from: model/backbone/backbone.pth")
 
     # Learning rate decay strategy
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
@@ -127,8 +144,14 @@ if __name__ == '__main__':
                 # Compute loss
                 iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, targets, cfg, device)
 
+                print("Loss values before backpropagation - Epoch:%d Batch:%d - CIou:%f Obj:%f Cls:%f Total:%f" % (
+                    epoch, batch_num, iou_loss, obj_loss, cls_loss, total_loss))
+
                 # Backpropagation to compute gradients
                 total_loss.backward()
+
+                print("Loss values after backpropagation - Epoch:%d Batch:%d - CIou:%f Obj:%f Cls:%f Total:%f" % (
+                    epoch, batch_num, iou_loss, obj_loss, cls_loss, total_loss))
 
                 # Warmup for learning rate
                 for g in optimizer.param_groups:
