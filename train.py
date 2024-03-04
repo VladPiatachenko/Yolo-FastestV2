@@ -198,6 +198,6 @@ if __name__ == '__main__':
                 # Learning rate adjustment
                 scheduler.step()
 
-        except KeyboardInterrupt:
+    except KeyboardInterrupt:
         print("Training interrupted. Saving checkpoint...")
         # Save checkpoint or any other necessary clean-up
