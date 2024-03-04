@@ -1,18 +1,14 @@
-import os
-import math
-import time
-import argparse
+import random
 import numpy as np
-from tqdm import tqdm
 import torch
-from torch import optim
-from torch.utils.data import DataLoader
-from torchsummary import summary
-import utils.loss
-import utils.utils
-import utils.datasets
-import model.detector
-import re
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
 
 if __name__ == '__main__':
     # Specify the training configuration file
@@ -20,8 +16,12 @@ if __name__ == '__main__':
     parser.add_argument('--data', type=str, default='', help='Specify training profile *.data')
     parser.add_argument('--checkpoint', type=str, default='',
                         help='Path to the checkpoint file to continue training from')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed')
     opt = parser.parse_args()
     cfg = utils.utils.load_datafile(opt.data)
+
+    # Set random seed
+    set_seed(opt.seed)
 
     # Define checkpoint interval (e.g., save checkpoint every 2 epochs)
     checkpoint_interval = 2
