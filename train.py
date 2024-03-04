@@ -13,28 +13,14 @@ import utils.utils
 import utils.datasets
 import model.detector
 import re
-import random
-
-
-def set_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
 
 if __name__ == '__main__':
     # Specify the training configuration file
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default='', help='Specify training profile *.data')
-    parser.add_argument('--checkpoint', type=str, default='',
-                        help='Path to the checkpoint file to continue training from')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed')
+    parser.add_argument('--checkpoint', type=str, default='', help='Path to the checkpoint file to continue training from')
     opt = parser.parse_args()
     cfg = utils.utils.load_datafile(opt.data)
-
-    # Set random seed
-    set_seed(opt.seed)
 
     # Define checkpoint interval (e.g., save checkpoint every 2 epochs)
     checkpoint_interval = 2
@@ -62,8 +48,7 @@ if __name__ == '__main__':
                                   num_workers=nw,
                                   pin_memory=True,
                                   drop_last=True,
-                                  persistent_workers=True
-                                  )
+                                  persistent_workers=True)
     # Validation set
     val_dataloader = DataLoader(val_dataset,
                                 batch_size=batch_size,
@@ -72,8 +57,7 @@ if __name__ == '__main__':
                                 num_workers=nw,
                                 pin_memory=True,
                                 drop_last=False,
-                                persistent_workers=True
-                                )
+                                persistent_workers=True)
 
     # Specify the device (CUDA or CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -92,8 +76,7 @@ if __name__ == '__main__':
     optimizer = optim.SGD(params=model.parameters(),
                           lr=cfg["learning_rate"],
                           momentum=0.949,
-                          weight_decay=0.0005,
-                          )
+                          weight_decay=0.0005)
 
     # Load the parameters of the pre-trained model
     if load_param:
@@ -157,14 +140,14 @@ if __name__ == '__main__':
                 # Compute loss
                 iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, targets, cfg, device)
 
-                #print("Loss values before backpropagation - Epoch:%d Batch:%d - CIou:%f Obj:%f Cls:%f Total:%f" % (
-                #    epoch, batch_num, iou_loss, obj_loss, cls_loss, total_loss))
+                print("Loss values before backpropagation - Epoch:%d Batch:%d - CIou:%f Obj:%f Cls:%f Total:%f" % (
+                    epoch, batch_num, iou_loss, obj_loss, cls_loss, total_loss))
 
                 # Backpropagation to compute gradients
                 total_loss.backward()
 
-               # print("Loss values after backpropagation - Epoch:%d Batch:%d - CIou:%f Obj:%f Cls:%f Total:%f" % (
-               #     epoch, batch_num, iou_loss, obj_loss, cls_loss, total_loss))
+                print("Loss values after backpropagation - Epoch:%d Batch:%d - CIou:%f Obj:%f Cls:%f Total:%f" % (
+                    epoch, batch_num, iou_loss, obj_loss, cls_loss, total_loss))
 
                 # Warmup for learning rate
                 for g in optimizer.param_groups:
@@ -187,32 +170,34 @@ if __name__ == '__main__':
 
                 batch_num += 1
 
-            # Save checkpoints
+            # Save checkpoints at the end of the epoch
             if epoch % checkpoint_interval == 0:
                 checkpoint_path = os.path.join(checkpoint_dir, f"model_epoch_{epoch}.pth")
-                torch.save({
+                checkpoint = {
                     'epoch': epoch,
                     'model': model.state_dict(),
                     'optimizer': optimizer.state_dict(),
-                }, checkpoint_path)
+                    'pre_weights': cfg['pre_weights']
+                }
+                torch.save(checkpoint, checkpoint_path)
                 print(f"Checkpoint saved at {checkpoint_path}")
 
-            # Save the model
-            if epoch % 10 == 0 and epoch > 0:
-                model.eval()
-                # Model evaluation
-                print("Compute mAP...")
-                _, _, AP, _ = utils.utils.evaluation(val_dataloader, cfg, model, device)
-                print("Compute PR...")
-                precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
-                print("Precision:%f Recall:%f AP:%f F1:%f" % (precision, recall, AP, f1))
+                # Save the model
+                if epoch % 10 == 0 and epoch > 0:
+                    model.eval()
+                    # Model evaluation
+                    print("Compute mAP...")
+                    _, _, AP, _ = utils.utils.evaluation(val_dataloader, cfg, model, device)
+                    print("Compute PR...")
+                    precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
+                    print("Precision:%f Recall:%f AP:%f F1:%f" % (precision, recall, AP, f1))
 
-                torch.save(model.state_dict(), "weights/%s-%d-epoch-%fap-model.pth" %
-                           (cfg["model_name"], epoch, AP))
+                    torch.save(model.state_dict(), "weights/%s-%d-epoch-%fap-model.pth" %
+                               (cfg["model_name"], epoch, AP))
 
-            # Learning rate adjustment
-            scheduler.step()
+                # Learning rate adjustment
+                scheduler.step()
 
-    except KeyboardInterrupt:
+        except KeyboardInterrupt:
         print("Training interrupted. Saving checkpoint...")
         # Save checkpoint or any other necessary clean-up
