@@ -184,7 +184,7 @@ if __name__ == '__main__':
                 print(f"Checkpoint saved at {checkpoint_path}")
 
                 # Save the model
-                if epoch % 10 == 0 and epoch > 0:
+                if epoch % 2 == 0 and epoch > 0:
                     print("Saveing the model...")
                     model.eval()
                     # Model evaluation
