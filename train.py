@@ -140,7 +140,7 @@ if __name__ == '__main__':
             precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
             print("Precision:%f Recall:%f AP:%f F1:%f"%(precision, recall, AP, f1))
 
-            torch.save(model.state_dict(), "weights/%s-%d-epoch-%fap-model.pth" %
+            torch.save(model.state_dict(), "/content/drive/My Drive/checkpoints/%s-%d-epoch-%fap-model.pth" %
                       (cfg["model_name"], epoch, AP))
 
         # 学习率调整
