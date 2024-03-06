@@ -25,6 +25,7 @@ if __name__ == '__main__':
     # Define checkpoint interval (e.g., save checkpoint every 2 epochs)
     checkpoint_interval = 2
     checkpoint_dir = '/content/drive/My Drive/checkpoints'
+    checkpoint_model_dir = '/content/drive/My Drive/checkpoints/weights'
 
     print("Training configuration:")
     print(cfg)
@@ -184,6 +185,7 @@ if __name__ == '__main__':
 
                 # Save the model
                 if epoch % 10 == 0 and epoch > 0:
+                    print("Saveing the model...")
                     model.eval()
                     # Model evaluation
                     print("Compute mAP...")
@@ -191,9 +193,13 @@ if __name__ == '__main__':
                     print("Compute PR...")
                     precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
                     print("Precision:%f Recall:%f AP:%f F1:%f" % (precision, recall, AP, f1))
+                  # Create the directory if it doesn't exist
+                    os.makedirs(checkpoint_dir, exist_ok=True)
+                
+                    # Save the model checkpoint to the specified directory
+                    checkpoint_path = os.path.join(checkpoint_model_dir, "%s-%d-epoch-%fap-model.pth" % (cfg["model_name"], epoch, AP))
+                    torch.save(model.state_dict(), checkpoint_path)
 
-                    torch.save(model.state_dict(), "weights/%s-%d-epoch-%fap-model.pth" %
-                               (cfg["model_name"], epoch, AP))
 
                 # Learning rate adjustment
                 scheduler.step()
