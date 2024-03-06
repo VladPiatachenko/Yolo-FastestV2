@@ -141,14 +141,14 @@ if __name__ == '__main__':
                 # Compute loss
                 iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, targets, cfg, device)
 
-                print("Loss values before backpropagation - Epoch:%d Batch:%d - CIou:%f Obj:%f Cls:%f Total:%f" % (
-                    epoch, batch_num, iou_loss, obj_loss, cls_loss, total_loss))
+                #print("Loss values before backpropagation - Epoch:%d Batch:%d - CIou:%f Obj:%f Cls:%f Total:%f" % (
+                #    epoch, batch_num, iou_loss, obj_loss, cls_loss, total_loss))
 
                 # Backpropagation to compute gradients
                 total_loss.backward()
 
-                print("Loss values after backpropagation - Epoch:%d Batch:%d - CIou:%f Obj:%f Cls:%f Total:%f" % (
-                    epoch, batch_num, iou_loss, obj_loss, cls_loss, total_loss))
+                #print("Loss values after backpropagation - Epoch:%d Batch:%d - CIou:%f Obj:%f Cls:%f Total:%f" % (
+                #    epoch, batch_num, iou_loss, obj_loss, cls_loss, total_loss))
 
                 # Warmup for learning rate
                 for g in optimizer.param_groups:
