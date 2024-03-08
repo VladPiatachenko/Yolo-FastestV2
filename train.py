@@ -140,10 +140,18 @@ if __name__ == '__main__':
 
             batch_num += 1
 
-        # Save the model
+       # Save the model
         if epoch % 10 == 0 and epoch > 0:
             model.eval()
             # Model evaluation
             print("Compute mAP...")
             _, _, AP, _ = utils.utils.evaluation(val_dataloader, cfg, model, device)
-            print("Compute
+            print("Compute PR...")
+            precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
+            print("Precision:%f Recall:%f AP:%f F1:%f"%(precision, recall, AP, f1))
+
+            torch.save(model.state_dict(), "weights/%s-%d-epoch-%fap-model.pth" %
+                      (cfg["model_name"], epoch, AP))
+
+        # Adjust learning rate
+        scheduler.step()
