@@ -12,12 +12,22 @@ from torch.utils.data import dataset
 from numpy.core.fromnumeric import shape
 
 from torchsummary import summary
+import re
 
 import utils.loss
 import utils.utils
 import utils.datasets
 import model.detector
 
+
+# Define a function to extract the starting epoch from the model file name
+def extract_start_epoch(model_path):
+    filename = os.path.basename(model_path)
+    match = re.search(r'-(\d+)-epoch-', filename)
+    if match:
+        return int(match.group(1))
+    else:
+        return 0
 
 if __name__ == '__main__':
     # Specify the training configuration file
@@ -71,8 +81,10 @@ if __name__ == '__main__':
     # Load saved model if resuming training
     if opt.resume and opt.model_path:
         model.load_state_dict(torch.load(opt.model_path))
-        print("Resuming training from model: %s" % opt.model_path)
+        start_epoch = extract_start_epoch(opt.model_path)
+        print("Resuming training from epoch %d, model: %s" % (start_epoch, opt.model_path))
     else:
+        start_epoch = 0
         print("Starting training from scratch")
 
     # Build the SGD optimizer
@@ -87,10 +99,10 @@ if __name__ == '__main__':
                                                milestones=cfg["steps"],
                                                gamma=0.1)
 
-    print('Starting training for %g epochs...' % cfg["epochs"])
+    print('Starting training for %g epochs...' % (cfg["epochs"] - start_epoch))
 
     batch_num = 0
-    for epoch in range(cfg["epochs"]):
+    for epoch in range(start_epoch, cfg["epochs"]):
         model.train()
         pbar = tqdm(train_dataloader)
 
@@ -134,12 +146,4 @@ if __name__ == '__main__':
             # Model evaluation
             print("Compute mAP...")
             _, _, AP, _ = utils.utils.evaluation(val_dataloader, cfg, model, device)
-            print("Compute PR...")
-            precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
-            print("Precision:%f Recall:%f AP:%f F1:%f"%(precision, recall, AP, f1))
-
-            torch.save(model.state_dict(), "weights/%s-%d-epoch-%fap-model.pth" %
-                      (cfg["model_name"], epoch, AP))
-
-        # Adjust learning rate
-        scheduler.step()
+            print("Compute
