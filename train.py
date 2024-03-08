@@ -76,19 +76,18 @@ if __name__ == '__main__':
     # Load saved model if resuming training
     if opt.resume and opt.model_path:
         start_epoch = extract_start_epoch(opt.model_path)
-        model = Detector(cfg["classes"], cfg["anchor_num"], load_param)
+        model = Detector(cfg["classes"], cfg["anchor_num"], load_param=True)
         model = model.to(device)
         model.load_state_dict(torch.load(opt.model_path))
         print("Resuming training from epoch %d, model: %s" % (start_epoch, opt.model_path))
-        load_param = True  # Set load_param to True when resuming training
     else:
         start_epoch = 0
         print("Starting training from scratch")
+        model = Detector(cfg["classes"], cfg["anchor_num"], load_param=False)
+        model = model.to(device)
         load_param = False  # Set load_param to False when starting from scratch
 
     # Initialize the model structure
-    model = Detector(cfg["classes"], cfg["anchor_num"], load_param)
-    model = model.to(device)
     summary(model, input_size=(3, cfg["height"], cfg["width"]))
 
     # Build the SGD optimizer
@@ -154,8 +153,9 @@ if __name__ == '__main__':
             precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
             print("Precision:%f Recall:%f AP:%f F1:%f"%(precision, recall, AP, f1))
 
-            torch.save(model.state_dict(), "weights/%s-%d-epoch-%fap-model.pth" %
-                      (cfg["model_name"], epoch, AP))
+            # Save model to Google Drive directory
+            model_save_path = f"/content/drive/MyDrive/checkpoints/{cfg['model_name']}-{epoch}-epoch-{AP:.6f}ap-model.pth"
+            torch.save(model.state_dict(), model_save_path)
 
         # Adjust learning rate
         scheduler.step()
