@@ -105,6 +105,7 @@ if __name__ == '__main__':
     print('Starting training for %g epochs...' % (cfg["epochs"] - start_epoch))
 
     batch_num = 0
+    best_ap = 0.0  # Track the best average precision
     for epoch in range(start_epoch, cfg["epochs"]):
         model.train()
         pbar = tqdm(train_dataloader)
@@ -156,6 +157,11 @@ if __name__ == '__main__':
             # Save model to Google Drive directory
             model_save_path = f"/content/drive/MyDrive/checkpoints/{cfg['model_name']}-{epoch}-epoch-{AP:.6f}ap-model.pth"
             torch.save(model.state_dict(), model_save_path)
+
+            # Update best model if current model has better AP
+            if AP > best_ap:
+                best_ap = AP
+                best_model_path = model_save_path
 
         # Adjust learning rate
         scheduler.step()
