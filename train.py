@@ -12,13 +12,12 @@ from torch.utils.data import dataset
 from numpy.core.fromnumeric import shape
 
 from torchsummary import summary
-import re
 
 import utils.loss
 import utils.utils
 import utils.datasets
-import model.detector
-
+from model.detector import Detector
+import re
 
 # Define a function to extract the starting epoch from the model file name
 def extract_start_epoch(model_path):
@@ -74,18 +73,23 @@ if __name__ == '__main__':
     # Specify the backend device (CUDA or CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Initialize the model structure
-    model = model.detector.Detector(cfg["classes"], cfg["anchor_num"], load_param).to(device)
-    summary(model, input_size=(3, cfg["height"], cfg["width"]))
-
     # Load saved model if resuming training
     if opt.resume and opt.model_path:
-        model.load_state_dict(torch.load(opt.model_path))
         start_epoch = extract_start_epoch(opt.model_path)
+        model = Detector(cfg["classes"], cfg["anchor_num"], load_param)
+        model = model.to(device)
+        model.load_state_dict(torch.load(opt.model_path))
         print("Resuming training from epoch %d, model: %s" % (start_epoch, opt.model_path))
+        load_param = True  # Set load_param to True when resuming training
     else:
         start_epoch = 0
         print("Starting training from scratch")
+        load_param = False  # Set load_param to False when starting from scratch
+
+    # Initialize the model structure
+    model = Detector(cfg["classes"], cfg["anchor_num"], load_param)
+    model = model.to(device)
+    summary(model, input_size=(3, cfg["height"], cfg["width"]))
 
     # Build the SGD optimizer
     optimizer = optim.SGD(params=model.parameters(),
@@ -140,7 +144,7 @@ if __name__ == '__main__':
 
             batch_num += 1
 
-       # Save the model
+        # Save the model
         if epoch % 10 == 0 and epoch > 0:
             model.eval()
             # Model evaluation
