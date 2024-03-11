@@ -10,7 +10,7 @@ learning_rate=0.001
 
 [model-configure]
 pre_weights=None
-classes=1
+classes=10
 width=640
 height=640
 anchor_num=3
@@ -18,6 +18,6 @@ anchors= 57.49255319,58.79148936, 106.21689189,146.3222973, 166.59054054,76.7027
 
 
 [data-configure]
-train=/content/train.txt
-val=/content/val.txt
-names=/content/Yolo-FastestV2/category.names
+train=/content/dataset/train.txt
+val=/content/dataset/val.txt
+names=/content/dataset/category.names
