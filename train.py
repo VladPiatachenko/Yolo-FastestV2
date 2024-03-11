@@ -145,7 +145,7 @@ if __name__ == '__main__':
             batch_num += 1
 
         # Save the model
-        if epoch % 10 == 0 and epoch > 0:
+        if epoch % 5 == 0 and epoch > 0:
             model.eval()
             # Model evaluation
             print("Compute mAP...")
