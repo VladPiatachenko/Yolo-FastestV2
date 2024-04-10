@@ -24,6 +24,13 @@ def extract_start_epoch(model_path):
     else:
         return 0
 
+# Define label smoothing function
+def smooth_labels(true_labels, smooth_factor=0.1):
+    num_classes = true_labels.size(-1)
+    smooth_labels = true_labels * (1.0 - smooth_factor)
+    smooth_labels += smooth_factor / num_classes
+    return smooth_labels
+
 if __name__ == '__main__':
     # Specify the training configuration file
     parser = argparse.ArgumentParser()
@@ -112,10 +119,14 @@ if __name__ == '__main__':
             imgs = imgs.to(device).float() / 255.0
             targets = targets.to(device)
 
+            # Smooth the target labels
+            smooth_targets = smooth_labels(targets)
+
             # Model inference
             preds = model(imgs)
-            # Loss calculation
-            iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, targets, cfg, device)
+            
+            # Loss calculation with label smoothing
+            iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, smooth_targets, cfg, device)
 
             # Backpropagation to compute gradients
             total_loss.backward()
