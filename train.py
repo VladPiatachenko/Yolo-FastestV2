@@ -8,10 +8,6 @@ from numpy.testing._private.utils import print_assert_equal
 
 import torch
 from torch import optim
-from torch.utils.data import dataset
-from numpy.core.fromnumeric import shape
-
-from torchsummary import summary
 
 import utils.loss
 import utils.utils
@@ -106,6 +102,7 @@ if __name__ == '__main__':
 
     batch_num = 0
     best_ap = 0.0  # Track the best average precision
+    best_model_path = ''  # Initialize the best model path variable
     for epoch in range(start_epoch, cfg["epochs"]):
         model.train()
         pbar = tqdm(train_dataloader)
@@ -144,24 +141,23 @@ if __name__ == '__main__':
 
             batch_num += 1
 
-        # Save the model
-        if epoch % 3 == 0 and epoch > 0:
-            model.eval()
-            # Model evaluation
-            print("Compute mAP...")
-            _, _, AP, _ = utils.utils.evaluation(val_dataloader, cfg, model, device)
-            print("Compute PR...")
-            precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
-            print("Precision:%f Recall:%f AP:%f F1:%f"%(precision, recall, AP, f1))
+        # Save the model if it has the best AP
+        model.eval()
+        # Model evaluation
+        print("Compute mAP...")
+        _, _, AP, _ = utils.utils.evaluation(val_dataloader, cfg, model, device)
+        print("Compute PR...")
+        precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
+        print("Precision:%f Recall:%f AP:%f F1:%f"%(precision, recall, AP, f1))
 
+        # Update best model if current model has better AP
+        if AP > best_ap:
+            best_ap = AP
             # Save model to Google Drive directory
-            model_save_path = f"/content/drive/MyDrive/checkpoints/{cfg['model_name']}-{epoch}-epoch-{AP:.6f}ap-model.pth"
-            torch.save(model.state_dict(), model_save_path)
-
-            # Update best model if current model has better AP
-            if AP > best_ap:
-                best_ap = AP
-                best_model_path = model_save_path
+            best_model_path = f"/content/drive/MyDrive/checkpoints/{cfg['model_name']}-best-model.pth"
+            torch.save(model.state_dict(), best_model_path)
 
         # Adjust learning rate
         scheduler.step()
+
+    print(f"Best model saved at: {best_model_path}")
