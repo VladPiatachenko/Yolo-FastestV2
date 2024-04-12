@@ -4,9 +4,9 @@ model_name=coco
 [train-configure]
 epochs=300
 steps=150,250
-batch_size=16  ; Reduced batch size
-subdivisions=4  ; Increased subdivisions
-learning_rate=0.0005  ; Reduced learning rate for stability
+batch_size=16  
+subdivisions=4  
+learning_rate=0.0005
 
 [model-configure]
 pre_weights=None
