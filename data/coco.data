@@ -4,17 +4,17 @@ model_name=coco
 [train-configure]
 epochs=300
 steps=150,250
-batch_size=32
-subdivisions=1
-learning_rate=0.001
+batch_size=16  ; Reduced batch size
+subdivisions=4  ; Increased subdivisions
+learning_rate=0.0005  ; Reduced learning rate for stability
 
 [model-configure]
 pre_weights=None
 classes=10
 width=640
 height=640
-anchor_num=3
-anchors= 17.40270944,37.0090758, 25.8083559,47.45726698, 42.36405163,20.10987159, 44.88002034,48.09845599, 49.62961538,27.32, 97.96470588,94.31344538
+anchor_num=6
+anchors= 24.36653396,47.36566913, 38.68045209,17.27027898, 45.17497664,43.35143546, 48.49495279,54.22392575, 49.4193331,28.47176349, 60.23422982,60.15983847
 
 [data-configure]
 train=/content/dataset/train.txt
