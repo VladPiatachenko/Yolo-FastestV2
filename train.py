@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 from numpy.testing._private.utils import print_assert_equal
-
+from torchsummary import summary
 import torch
 from torch import optim
 
