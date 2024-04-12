@@ -167,6 +167,7 @@ if __name__ == '__main__':
             # Save model to Google Drive directory
             best_model_path = f"/content/drive/MyDrive/checkpoints/{cfg['model_name']}-best-model.pth"
             torch.save(model.state_dict(), best_model_path)
+            print(f"Checkpoint saved at: {best_model_path} 😊")  # Visual indicator
 
         # Adjust learning rate
         scheduler.step()
