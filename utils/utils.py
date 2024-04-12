@@ -9,60 +9,63 @@ import os, time
 import numpy as np
 from tqdm import tqdm
 
-#加载data
+import os
+
 def load_datafile(data_path):
-    #需要配置的超参数
+    # Required configuration hyperparameters
     cfg = {"model_name":None,
-    
            "epochs": None,
-           "steps": None,           
+           "steps": None,
            "batch_size": None,
            "subdivisions":None,
            "learning_rate": None,
-
-           "pre_weights": None,        
+           "pre_weights": None,
            "classes": None,
            "width": None,
-           "height": None,           
+           "height": None,
            "anchor_num": None,
            "anchors": None,
-
-           "val": None,           
+           "val": None,
            "train": None,
            "names":None
         }
 
-    assert os.path.exists(data_path), "请指定正确配置.data文件路径"
+    assert os.path.exists(data_path), "Please specify the correct *.data file path"
 
-    #指定配置项的类型
+    # Specify the types of configuration items
     list_type_key = ["anchors", "steps"]
     str_type_key = ["model_name", "val", "train", "names", "pre_weights"]
     int_type_key = ["epochs", "batch_size", "classes", "width",
                    "height", "anchor_num", "subdivisions"]
     float_type_key = ["learning_rate"]
-    
-    #加载配置文件
+
+    # Load the configuration file
     with open(data_path, 'r') as f:
         for line in f.readlines():
             if line == '\n' or line[0] == "[":
                 continue
             else:
                 data = line.strip().split("=")
-                #配置项类型转换
+                # Convert configuration item types
                 if data[0] in cfg:
-                    if data[0] in int_type_key:
-                       cfg[data[0]] = int(data[1])
-                    elif data[0] in str_type_key:
-                        cfg[data[0]] = data[1]
-                    elif data[0] in float_type_key:
-                        cfg[data[0]] = float(data[1])
-                    elif data[0] in list_type_key:
-                        cfg[data[0]] = [float(x) for x in data[1].split(",")]
-                    else:
-                        print("配置文件有错误的配置项")
+                    try:
+                        if data[0] in int_type_key:
+                            cfg[data[0]] = int(data[1])
+                        elif data[0] in str_type_key:
+                            cfg[data[0]] = data[1]
+                        elif data[0] in float_type_key:
+                            cfg[data[0]] = float(data[1])
+                        elif data[0] in list_type_key:
+                            cfg[data[0]] = [float(x) for x in data[1].split(",")]
+                        else:
+                            print("Error in the configuration file")
+                    except ValueError:
+                        print("Unable to convert value to the required type: %s" % data[1])
+                        continue
                 else:
-                    print("%s配置文件里有无效配置项:%s"%(data_path, data))
+                    print("Invalid configuration item in %s: %s"%(data_path, data))
     return cfg
+
 
 def xywh2xyxy(x):
     # Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
