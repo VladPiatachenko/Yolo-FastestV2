@@ -78,10 +78,14 @@ if __name__ == '__main__':
 
     # Load saved model if resuming training
     if opt.resume and opt.model_path:
-        start_epoch = extract_start_epoch(opt.model_path)
+        checkpoint = torch.load(opt.model_path)
+        start_epoch = checkpoint['epoch'] + 1  # Start from the next epoch
         model = Detector(cfg["classes"], cfg["anchor_num"], load_param=True)
         model = model.to(device)
-        model.load_state_dict(torch.load(opt.model_path))
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        best_ap = checkpoint['best_ap']
         print("Resuming training from epoch %d, model: %s" % (start_epoch, opt.model_path))
     else:
         start_epoch = 0
@@ -164,10 +168,17 @@ if __name__ == '__main__':
         # Update best model if current model has better AP
         if AP > best_ap:
             best_ap = AP
-            # Save model to Google Drive directory
+            # Save model along with current epoch number
             best_model_path = f"/content/drive/MyDrive/checkpoints/{cfg['model_name']}-best-model.pth"
-            torch.save(model.state_dict(), best_model_path)
-            print(f"Checkpoint saved at: {best_model_path} 😊")  # Visual indicator
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+                'best_ap': best_ap,
+            }, best_model_path)
+            print(f"Checkpoint saved at: {best_model_path} 😊")
+
 
         # Adjust learning rate
         scheduler.step()
