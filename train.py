@@ -79,20 +79,28 @@ if __name__ == '__main__':
     # Load saved model if resuming training
     if opt.resume and opt.model_path:
         checkpoint = torch.load(opt.model_path)
-        start_epoch = checkpoint['epoch'] + 1  # Start from the next epoch
-        model = Detector(cfg["classes"], cfg["anchor_num"], load_param=True)
-        model = model.to(device)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        best_ap = checkpoint['best_ap']
-        print("Resuming training from epoch %d, model: %s" % (start_epoch, opt.model_path))
+        if 'epoch' in checkpoint:
+            start_epoch = checkpoint['epoch'] + 1  # Start from the next epoch
+            model = Detector(cfg["classes"], cfg["anchor_num"], load_param=True)
+            model = model.to(device)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            best_ap = checkpoint['best_ap']
+            print("Resuming training from epoch %d, model: %s" % (start_epoch, opt.model_path))
+            # Define the model here so that it's accessible for summary
+            summary(model, input_size=(3, cfg["height"], cfg["width"]))
+        else:
+            print("Error: 'epoch' key not found in the checkpoint file.")
+            # Handle the error appropriately, e.g., start from epoch 0 or exit the program
     else:
         start_epoch = 0
         print("Starting training from scratch")
         model = Detector(cfg["classes"], cfg["anchor_num"], load_param=False)
         model = model.to(device)
         load_param = False  # Set load_param to False when starting from scratch
+        # Define the model here so that it's accessible for summary
+        summary(model, input_size=(3, cfg["height"], cfg["width"]))
 
     # Initialize the model structure
     summary(model, input_size=(3, cfg["height"], cfg["width"]))
@@ -177,7 +185,7 @@ if __name__ == '__main__':
                 'scheduler_state_dict': scheduler.state_dict(),
                 'best_ap': best_ap,
             }, best_model_path)
-            print(f"Checkpoint saved at: {best_model_path} 😊")
+            print(f"Checkpoint saved at: {best_model_path} рџЉ")
 
 
         # Adjust learning rate
