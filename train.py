@@ -4,7 +4,6 @@ import time
 import argparse
 import numpy as np
 from tqdm import tqdm
-from numpy.testing._private.utils import print_assert_equal
 from torchsummary import summary
 import torch
 from torch import optim
@@ -12,7 +11,6 @@ from torch import optim
 import utils.loss
 import utils.utils
 import utils.datasets
-from model.detector import Detector
 import re
 
 # Define a function to extract the starting epoch from the model file name
@@ -102,9 +100,6 @@ if __name__ == '__main__':
         # Define the model here so that it's accessible for summary
         summary(model, input_size=(3, cfg["height"], cfg["width"]))
 
-    # Initialize the model structure
-    summary(model, input_size=(3, cfg["height"], cfg["width"]))
-
     # Build the SGD optimizer
     optimizer = optim.SGD(params=model.parameters(),
                           lr=cfg["learning_rate"],
@@ -119,7 +114,6 @@ if __name__ == '__main__':
 
     print('Starting training for %g epochs...' % (cfg["epochs"] - start_epoch))
 
-    batch_num = 0
     best_ap = 0.0  # Track the best average precision
     best_model_path = ''  # Initialize the best model path variable
     for epoch in range(start_epoch, cfg["epochs"]):
@@ -141,37 +135,32 @@ if __name__ == '__main__':
             iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, smooth_targets, cfg, device)
 
             # Backpropagation to compute gradients
+            optimizer.zero_grad()
             total_loss.backward()
-
-            # Learning rate warm-up
-            for g in optimizer.param_groups:
-                warmup_num =  5 * len(train_dataloader)
-                if batch_num <= warmup_num:
-                    scale = math.pow(batch_num/warmup_num, 4)
-                    g['lr'] = cfg["learning_rate"] * scale
-
-                lr = g["lr"]
-
-            # Update model parameters
-            if batch_num % cfg["subdivisions"] == 0:
-                optimizer.step()
-                optimizer.zero_grad()
+            optimizer.step()
 
             # Print relevant information
+            lr = optimizer.param_groups[0]['lr']
             info = "Epoch:%d LR:%f CIou:%f Obj:%f Cls:%f Total:%f" % (
                     epoch, lr, iou_loss, obj_loss, cls_loss, total_loss)
             pbar.set_description(info)
 
-            batch_num += 1
+        # Learning rate warm-up
+        warmup_epochs = 5
+        if epoch < warmup_epochs:
+            lr = cfg["learning_rate"] * (epoch + 1) / warmup_epochs
+        else:
+            lr = cfg["learning_rate"]
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
 
         # Save the model if it has the best AP
         model.eval()
         # Model evaluation
-        print("Compute mAP...")
-        _, _, AP, _ = utils.utils.evaluation(val_dataloader, cfg, model, device)
-        print("Compute PR...")
-        precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
-        print("Precision:%f Recall:%f AP:%f F1:%f"%(precision, recall, AP, f1))
+        print("Compute metrics...")
+        metrics = utils.utils.evaluation(val_dataloader, cfg, model, device)
+        precision, recall, AP, f1 = metrics
+        print("Precision:%f Recall:%f AP:%f F1:%f" % (precision, recall, AP, f1))
 
         # Update best model if current model has better AP
         if AP > best_ap:
@@ -186,7 +175,6 @@ if __name__ == '__main__':
                 'best_ap': best_ap,
             }, best_model_path)
             print(f"Checkpoint saved at: {best_model_path} рџЉ")
-
 
         # Adjust learning rate
         scheduler.step()
