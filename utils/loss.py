@@ -52,10 +52,10 @@ def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False):
 
 def build_target(preds, targets, cfg, device):
     tcls, tbox, indices, anch = [], [], [], []
-    #anchor box数量, 当前batch的标签数量
+    #anchor boxж•°й‡Џ, еЅ“е‰Ќbatchзљ„ж ‡з­ѕж•°й‡Џ
     anchor_num, label_num = cfg["anchor_num"], targets.shape[0]
 
-    #加载anchor配置
+    #еЉ иЅЅanchorй…ЌзЅ®
     anchors = np.array(cfg["anchors"])
     anchors = torch.from_numpy(anchors.reshape(len(preds) // 3, anchor_num, 2)).to(device)
 
@@ -72,29 +72,29 @@ def build_target(preds, targets, cfg, device):
 
     for i, pred in enumerate(preds):
         if i % 3 == 0:
-            #输出特征图的维度
+            #иѕ“е‡єз‰№еѕЃе›ѕзљ„з»ґеє¦
             _, _, h, w = pred.shape
 
-            assert cfg["width"]/w == cfg["height"]/h, "特征图宽高下采样不一致"
+            assert cfg["width"]/w == cfg["height"]/h, "з‰№еѕЃе›ѕе®Ѕй«дё‹й‡‡ж ·дёЌдёЂи‡ґ"
             
-            #计算下采样倍数
+            #и®Ўз®—дё‹й‡‡ж ·еЂЌж•°
             stride = cfg["width"]/w
 
-            #该尺度特征图对应的anchor配置
+            #иЇҐе°єеє¦з‰№еѕЃе›ѕеЇ№еє”зљ„anchorй…ЌзЅ®
             anchors_cfg = anchors[layer_index[i]]/stride
 
-            #将label坐标映射到特征图上
+            #е°†labelеќђж ‡ж е°„е€°з‰№еѕЃе›ѕдёЉ
             gain[2:6] = torch.tensor(pred.shape)[[3, 2, 3, 2]]
 
             gt = targets * gain 
 
             if label_num:
-                #anchor iou匹配
+                #anchor iouеЊ№й…Ќ
                 r = gt[:, :, 4:6] / anchors_cfg[:, None]
                 j = torch.max(r, 1. / r).max(2)[0] < 2
 
                 t = gt[j]
-                #扩充维度并复制数据
+                #ж‰©е……з»ґеє¦е№¶е¤Ќе€¶ж•°жЌ®
                 # Offsets
                 gxy = t[:, 2:4]  # grid xy
                 gxi = gain[[2, 3]] - gxy  # inverse
@@ -133,22 +133,22 @@ def compute_loss(preds, targets, cfg, device):
     ft = torch.cuda.FloatTensor if preds[0].is_cuda else torch.Tensor
     lcls, lbox, lobj = ft([0]), ft([0]), ft([0])
 
-    #定义obj和cls的损失函数
+    #е®љд№‰objе’Њclsзљ„жЌџе¤±е‡Ѕж•°
     BCEcls = nn.CrossEntropyLoss() 
     BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(1.0, device=device))
 
     cp, cn = smooth_BCE(eps=0.0)
     
-    #构建gt
+    #жћ„е»єgt
     tcls, tbox, indices, anchors = build_target(preds, targets, cfg, device)
 
     for i, pred in enumerate(preds):
-        #计算reg分支loss
+        #и®Ўз®—regе€†ж”Їloss
         if i % 3 == 0:
             pred = pred.reshape(pred.shape[0], cfg["anchor_num"], -1, pred.shape[2], pred.shape[3])
             pred = pred.permute(0, 1, 3, 4, 2)
             
-            #判断当前batch数据是否有gt
+            #е€¤ж–­еЅ“е‰Ќbatchж•°жЌ®жЇеђ¦жњ‰gt
             if len(indices):
                 b, a, gj, gi = indices[layer_index[i]]
                 nb = b.shape[0]
@@ -162,14 +162,14 @@ def compute_loss(preds, targets, cfg, device):
                     ciou = bbox_iou(pbox.t(), tbox[layer_index[i]], x1y1x2y2=False, CIoU=True)  # ciou(prediction, target)
                     lbox +=  (1.0 - ciou).mean()
 
-        #计算obj分支loss
+        #и®Ўз®—objе€†ж”Їloss
         elif i % 3 == 1:
             pred = pred.reshape(pred.shape[0], cfg["anchor_num"], -1, pred.shape[2], pred.shape[3])
             pred = pred.permute(0, 1, 3, 4, 2)
 
             tobj = torch.zeros_like(pred[..., 0])  # target obj
 
-            #判断当前batch数据是否有gt
+            #е€¤ж–­еЅ“е‰Ќbatchж•°жЌ®жЇеђ¦жњ‰gt
             if len(indices):
                 b, a, gj, gi = indices[layer_index[i]]
                 nb = b.shape[0]
@@ -180,7 +180,7 @@ def compute_loss(preds, targets, cfg, device):
                     
             lobj += BCEobj(pred[..., 0], tobj)  *  balance[layer_index[i]] # obj loss
 
-        #计算cls分支loss
+        #и®Ўз®—clsе€†ж”Їloss
         elif i % 3 == 2:
             pred = pred.reshape(pred.shape[0], 1, -1, pred.shape[2], pred.shape[3])
             pred = pred.permute(0, 1, 3, 4, 2)
@@ -206,3 +206,9 @@ def compute_loss(preds, targets, cfg, device):
     loss = lbox + lobj + lcls
 
     return lbox, lobj, lcls, loss
+    
+def smooth_labels(true_labels, smooth_factor=0.1):
+    num_classes = true_labels.size(-1)
+    smooth_labels = true_labels * (1.0 - smooth_factor)
+    smooth_labels += smooth_factor / num_classes
+    return smooth_labels
