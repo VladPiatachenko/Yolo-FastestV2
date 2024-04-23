@@ -47,8 +47,77 @@ def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False):
     return iou
 
 def build_target(preds, targets, cfg, device):
-    # Implementation of build_target function
-    pass
+    tcls, tbox, indices, anch = [], [], [], []
+    #anchor box数量, 当前batch的标签数量
+    anchor_num, label_num = cfg["anchor_num"], targets.shape[0]
+
+    #加载anchor配置
+    anchors = np.array(cfg["anchors"])
+    anchors = torch.from_numpy(anchors.reshape(len(preds) // 3, anchor_num, 2)).to(device)
+    
+    gain = torch.ones(7, device = device)
+
+    at = torch.arange(anchor_num, device = device).float().view(anchor_num, 1).repeat(1, label_num)
+    targets = torch.cat((targets.repeat(anchor_num, 1, 1), at[:, :, None]), 2)
+
+    g = 0.5  # bias
+    off = torch.tensor([[0, 0],
+                        [1, 0], [0, 1], [-1, 0], [0, -1],  # j,k,l,m
+                        # [1, 1], [1, -1], [-1, 1], [-1, -1],  # jk,jm,lk,lm
+                        ], device = device).float() * g  # offsets
+
+    for i, pred in enumerate(preds):
+        if i % 3 == 0:
+            #输出特征图的维度
+            _, _, h, w = pred.shape
+
+            assert cfg["width"]/w == cfg["height"]/h, "特征图宽高下采样不一致"
+            
+            #计算下采样倍数
+            stride = cfg["width"]/w
+
+            #该尺度特征图对应的anchor配置
+            anchors_cfg = anchors[layer_index[i]]/stride
+
+            #将label坐标映射到特征图上
+            gain[2:6] = torch.tensor(pred.shape)[[3, 2, 3, 2]]
+
+            gt = targets * gain 
+
+            if label_num:
+                #anchor iou匹配
+                r = gt[:, :, 4:6] / anchors_cfg[:, None]
+                j = torch.max(r, 1. / r).max(2)[0] < 2
+
+                t = gt[j]
+                #扩充维度并复制数据
+                # Offsets
+                gxy = t[:, 2:4]  # grid xy
+                gxi = gain[[2, 3]] - gxy  # inverse
+                j, k = ((gxy % 1. < g) & (gxy > 1.)).T
+                l, m = ((gxi % 1. < g) & (gxi > 1.)).T
+                j = torch.stack((torch.ones_like(j), j, k, l, m))
+                t = t.repeat((5, 1, 1))[j]
+                offsets = (torch.zeros_like(gxy)[None] + off[:, None])[j]
+            else:
+                t = targets[0]
+                offsets = 0
+
+            # Define
+            b, c = t[:, :2].long().T  # image, class
+            gxy = t[:, 2:4]  # grid xy
+            gwh = t[:, 4:6]  # grid wh
+            gij = (gxy - offsets).long()
+            gi, gj = gij.T  # grid xy indices
+
+            # Append
+            a = t[:, 6].long()  # anchor indices
+            indices.append((b, a, gj.clamp_(0, gain[3] - 1), gi.clamp_(0, gain[2] - 1)))  # image, anchor, grid indices
+            tbox.append(torch.cat((gxy - gij, gwh), 1))  # box
+            anch.append(anchors_cfg[a])  # anchors
+            tcls.append(c)  # class
+
+    return tcls, tbox, indices, anch
 
 def smooth_BCE(eps=0.1):
     return 1.0 - 0.5 * eps, 0.5 * eps
@@ -66,9 +135,9 @@ def compute_loss(preds, targets, cfg, device):
         else:
             raise ValueError("Invalid prediction index.")
 
-    lbox *= cfg["box_loss_weight"]
-    lobj *= cfg["obj_loss_weight"]
-    lcls *= cfg["cls_loss_weight"]
+    lbox *= 1.0#cfg["box_loss_weight"]
+    lobj *= 1.0#cfg["obj_loss_weight"]
+    lcls *= 1.0#cfg["cls_loss_weight"]
 
     loss = lbox + lobj + lcls
     return lbox, lobj, lcls, loss
@@ -80,13 +149,41 @@ def smooth_labels(true_labels, smooth_factor=0.05):
     return smooth_labels
 
 def compute_localization_loss(pred, targets, cfg, device):
-    # Placeholder for localization loss computation
-    return torch.tensor(0.0, device=device)
+    lbox = torch.tensor(0.0, device=device)  # Initialize localization loss
+
+    for i, pred_batch in enumerate(pred):
+        for j, pred_anchor in enumerate(pred_batch):
+            target_mask = targets[:, :, 0] == i  # Filter targets for the current batch index
+            if target_mask.any():
+                pred_box = pred_anchor[target_mask[:, j]]  # Predicted bounding boxes for targets in this batch
+                target_box = targets[target_mask][:, j, 2:]  # Target bounding boxes
+                lbox += F.mse_loss(pred_box, target_box, reduction='sum')  # Compute MSE loss
+
+    return lbox
+
 
 def compute_objectness_loss(pred, targets, cfg, device):
-    # Placeholder for objectness loss computation
-    return torch.tensor(0.0, device=device)
+    lobj = torch.tensor(0.0, device=device)  # Initialize objectness loss
+
+    for i, pred_batch in enumerate(pred):
+        for j, pred_anchor in enumerate(pred_batch):
+            target_mask = targets[:, :, 0] == i  # Filter targets for the current batch index
+            if target_mask.any():
+                obj_pred = pred_anchor[target_mask]  # Predicted objectness scores
+                obj_target = targets[target_mask, 1]  # Target objectness scores
+                lobj += F.binary_cross_entropy_with_logits(obj_pred, obj_target, reduction='sum')  # Binary cross-entropy loss
+
+    return lobj
 
 def compute_classification_loss(pred, targets, cfg, device):
-    # Placeholder for classification loss computation
-    return torch.tensor(0.0, device=device)
+    lcls = torch.tensor(0.0, device=device)  # Initialize classification loss
+
+    for i, pred_batch in enumerate(pred):
+        for j, pred_anchor in enumerate(pred_batch):
+            target_mask = targets[:, :, 0] == i  # Filter targets for the current batch index
+            if target_mask.any():
+                class_pred = pred_anchor[target_mask]  # Predicted class scores
+                class_target = targets[target_mask, 1].long()  # Target class indices
+                lcls += F.cross_entropy(class_pred, class_target, reduction='sum')  # Cross-entropy loss
+
+    return lcls
