@@ -73,7 +73,7 @@ def compute_loss(preds, targets, cfg, device):
     loss = lbox + lobj + lcls
     return lbox, lobj, lcls, loss
 
-def smooth_labels(true_labels, smooth_factor=0.1):
+def smooth_labels(true_labels, smooth_factor=0.05):
     num_classes = true_labels.size(-1)
     smooth_labels = true_labels * (1.0 - smooth_factor)
     smooth_labels += smooth_factor / num_classes
