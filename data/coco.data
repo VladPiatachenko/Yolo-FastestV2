@@ -20,3 +20,8 @@ anchors= 24.36653396,47.36566913, 38.68045209,17.27027898, 45.17497664,43.351435
 train=/content/dataset/train.txt
 val=/content/dataset/val.txt
 names=/content/Yolo-FastestV2/category.names
+
+[loss-configure]
+box_loss_weight=1.0
+obj_loss_weight=1.0
+cls_loss_weight=1.0
