@@ -14,7 +14,9 @@ from model.detector import Detector
 
 if __name__ == '__main__':
     # Specify the backend device (CUDA or CPU)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")    # Specify the training configuration file
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Specify the training configuration file
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default='',
                         help='Specify the training profile *.data')
@@ -25,11 +27,28 @@ if __name__ == '__main__':
     opt = parser.parse_args()
     cfg = utils.utils.load_datafile(opt.data)
 
+    # Check if the 'loss-configure' section exists in the configuration file
+    if "loss-configure" in cfg:
+        # Check if 'box_loss_weight' key exists in the 'loss-configure' section
+        if "box_loss_weight" in cfg["loss-configure"]:
+            box_loss_weight = cfg["loss-configure"]["box_loss_weight"]
+        else:
+            # Default value if 'box_loss_weight' is not specified
+            box_loss_weight = 1.0
+    else:
+        # Default value if 'loss-configure' section is not present
+        box_loss_weight = 1.0
+
+
+    # Set default values for missing keys
+    cfg.setdefault("loss-configure", {})
+    cfg["loss-configure"].setdefault("box_loss_weight", 1.0)
+
     print("Training configuration:")
     print(cfg)
     
     # Initialize the model
-    model = Detector(cfg["classes"], cfg["anchor_num"], load_param=False)  # Assuming load_param should be False here
+    model = Detector(cfg["classes"], cfg["anchor_num"], load_param=False)
     model = model.to(device)
 
     # Build the SGD optimizer
@@ -71,12 +90,9 @@ if __name__ == '__main__':
                                                  persistent_workers=True
                                                  )
 
-    # Specify the backend device (CUDA or CPU)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     # Load saved model if resuming training
     if opt.resume and opt.model_path:
-        checkpoint = torch.load(opt.model_path)
+        checkpoint = torch.load(opt.model_path, map_location=torch.device('cpu'))
         if 'epoch' in checkpoint:
             start_epoch = checkpoint['epoch'] + 1  # Start from the next epoch
             model.load_state_dict(checkpoint['model_state_dict'])
@@ -122,25 +138,13 @@ if __name__ == '__main__':
             iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, smooth_targets, cfg, device)
 
             # Backpropagation to compute gradients
+            optimizer.zero_grad()
             total_loss.backward()
-
-            # Learning rate warm-up
-            for g in optimizer.param_groups:
-                warmup_num =  5 * len(train_dataloader)
-                if batch_num <= warmup_num:
-                    scale = math.pow(batch_num/warmup_num, 4)
-                    g['lr'] = cfg["learning_rate"] * scale
-
-                lr = g["lr"]
-
-            # Update model parameters
-            if batch_num % cfg["subdivisions"] == 0:
-                optimizer.step()
-                optimizer.zero_grad()
+            optimizer.step()
 
             # Print relevant information
             info = "Epoch:%d LR:%f CIou:%f Obj:%f Cls:%f Total:%f" % (
-                    epoch, lr, iou_loss, obj_loss, cls_loss, total_loss)
+                    epoch, optimizer.param_groups[0]['lr'], iou_loss, obj_loss, cls_loss, total_loss)
             pbar.set_description(info)
 
             batch_num += 1
@@ -166,7 +170,7 @@ if __name__ == '__main__':
                 'scheduler_state_dict': scheduler.state_dict(),
                 'best_ap': best_ap,
             }, best_model_path)
-            print(f"Checkpoint saved at: {best_model_path} СЂСџВР‰")
+            print(f"Checkpoint saved at: {best_model_path}")
 
         # Adjust learning rate
         scheduler.step()
