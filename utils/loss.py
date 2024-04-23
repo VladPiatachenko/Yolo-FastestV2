@@ -55,16 +55,16 @@ def build_target(preds, targets, cfg, device):
     anchors = np.array(cfg["anchors"])
     anchors = torch.from_numpy(anchors.reshape(len(preds) // 3, anchor_num, 2)).to(device)
     
-    gain = torch.ones(7, device = device)
+    gain = torch.ones(7, device=device)
 
-    at = torch.arange(anchor_num, device = device).float().view(anchor_num, 1).repeat(1, label_num)
+    at = torch.arange(anchor_num, device=device).float().view(anchor_num, 1).repeat(1, label_num)
     targets = torch.cat((targets.repeat(anchor_num, 1, 1), at[:, :, None]), 2)
 
     g = 0.5  # bias
     off = torch.tensor([[0, 0],
                         [1, 0], [0, 1], [-1, 0], [0, -1],  # j,k,l,m
                         # [1, 1], [1, -1], [-1, 1], [-1, -1],  # jk,jm,lk,lm
-                        ], device = device).float() * g  # offsets
+                        ], device=device).float() * g  # offsets
 
     for i, pred in enumerate(preds):
         if i % 3 == 0:
@@ -112,35 +112,96 @@ def build_target(preds, targets, cfg, device):
 
             # Append
             a = t[:, 6].long()  # anchor indices
-            indices.append((b, a, gj.clamp_(0, gain[3] - 1), gi.clamp_(0, gain[2] - 1)))  # image, anchor, grid indices
+            indices.append((b, a, gj.clamp_(0, int(gain[3]) - 1), gi.clamp_(0, int(gain[2]) - 1)))  # image, anchor, grid indices
             tbox.append(torch.cat((gxy - gij, gwh), 1))  # box
             anch.append(anchors_cfg[a])  # anchors
             tcls.append(c)  # class
 
     return tcls, tbox, indices, anch
 
-def smooth_BCE(eps=0.1):
-    return 1.0 - 0.5 * eps, 0.5 * eps
+def smooth_BCE(eps: float = 0.1):
+    cp = (1 - eps) + eps / 2
+    cn = eps / 2
+    return torch.tensor(cp, requires_grad=True), torch.tensor(cn, requires_grad=True)
 
 def compute_loss(preds, targets, cfg, device):
-    lbox, lobj, lcls = torch.tensor(0.0, device=device), torch.tensor(0.0, device=device), torch.tensor(0.0, device=device)
+    balance = [1.0, 0.4]
+
+    ft = torch.cuda.FloatTensor if preds[0].is_cuda else torch.Tensor
+    lcls, lbox, lobj = ft([0]), ft([0]), ft([0])
+
+    # Define obj and cls loss functions
+    BCEcls = nn.CrossEntropyLoss() 
+    BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(1.0, device=device))
+
+    cp, cn = smooth_BCE(eps=0.0)  # Define cp and cn here
+
+    # Build ground truth
+    tcls, tbox, indices, anchors = build_target(preds, targets, cfg, device)
 
     for i, pred in enumerate(preds):
+        # Calculate reg branch loss
         if i % 3 == 0:
-            lbox += compute_localization_loss(pred, targets, cfg, device)
+            pred = pred.reshape(pred.shape[0], cfg["anchor_num"], -1, pred.shape[2], pred.shape[3])
+            pred = pred.permute(0, 1, 3, 4, 2)
+            
+            # Check if current batch data has ground truth
+            if len(indices):
+                b, a, gj, gi = indices[layer_index[i]]
+                nb = b.shape[0]
+
+                if nb:
+                    ps = pred[b, a, gj, gi]
+                    
+                    pxy = ps[:, :2].sigmoid() * 2. - 0.5
+                    pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[layer_index[i]]
+                    pbox = torch.cat((pxy, pwh), 1)  # predicted box
+                    ciou = bbox_iou(pbox.t(), tbox[layer_index[i]], x1y1x2y2=False, CIoU=True)  # ciou(prediction, target)
+                    lbox +=  (1.0 - ciou).mean()
+
+        # Calculate obj branch loss
         elif i % 3 == 1:
-            lobj += compute_objectness_loss(pred, targets, cfg, device)
+            pred = pred.reshape(pred.shape[0], cfg["anchor_num"], -1, pred.shape[2], pred.shape[3])
+            pred = pred.permute(0, 1, 3, 4, 2)
+
+            tobj = torch.zeros_like(pred[..., 0])  # target obj
+
+            # Check if current batch data has ground truth
+            if len(indices):
+                b, a, gj, gi = indices[layer_index[i]]
+                nb = b.shape[0]
+
+                if nb:
+                    ps = pred[b, a, gj, gi]
+                    tobj[b, a, gj, gi] = 1.0
+                    
+            lobj += BCEobj(pred[..., 0], tobj) * balance[layer_index[i]]  # obj loss
+
+        # Calculate cls branch loss
         elif i % 3 == 2:
-            lcls += compute_classification_loss(pred, targets, cfg, device)
-        else:
-            raise ValueError("Invalid prediction index.")
+            pred = pred.reshape(pred.shape[0], 1, -1, pred.shape[2], pred.shape[3])
+            pred = pred.permute(0, 1, 3, 4, 2)
 
-    lbox *= 1.0#cfg["box_loss_weight"]
-    lobj *= 1.0#cfg["obj_loss_weight"]
-    lcls *= 1.0#cfg["cls_loss_weight"]
+            if len(indices):
+                b, a, gj, gi = indices[layer_index[i]]
+                nb = b.shape[0]
 
+                if nb:
+                    ps = pred[b, 0, gj, gi]
+
+                    if ps.size(1) > 1:
+                        lcls += BCEcls(ps[:, :], tcls[layer_index[i]]) / cfg["classes"]  # BCE
+
+    lbox *= 3.2
+    lobj *= 64
+    lcls *= 32
     loss = lbox + lobj + lcls
+
+    # Perform backpropagation with retain_graph=True
+    loss.backward(retain_graph=True)
+
     return lbox, lobj, lcls, loss
+
 
 def smooth_labels(true_labels, smooth_factor=0.05):
     num_classes = true_labels.size(-1)
@@ -153,10 +214,10 @@ def compute_localization_loss(pred, targets, cfg, device):
 
     for i, pred_batch in enumerate(pred):
         for j, pred_anchor in enumerate(pred_batch):
-            target_mask = targets[:, :, 0] == i  # Filter targets for the current batch index
+            target_mask = targets[:, 0] == i  # Filter targets for the current batch index
             if target_mask.any():
                 pred_box = pred_anchor[target_mask[:, j]]  # Predicted bounding boxes for targets in this batch
-                target_box = targets[target_mask][:, j, 2:]  # Target bounding boxes
+                target_box = targets[target_mask][:, 2:6]  # Target bounding boxes (x, y, w, h)
                 lbox += F.mse_loss(pred_box, target_box, reduction='sum')  # Compute MSE loss
 
     return lbox
@@ -167,7 +228,7 @@ def compute_objectness_loss(pred, targets, cfg, device):
 
     for i, pred_batch in enumerate(pred):
         for j, pred_anchor in enumerate(pred_batch):
-            target_mask = targets[:, :, 0] == i  # Filter targets for the current batch index
+            target_mask = targets[:, 0] == i  # Filter targets for the current batch index
             if target_mask.any():
                 obj_pred = pred_anchor[target_mask]  # Predicted objectness scores
                 obj_target = targets[target_mask, 1]  # Target objectness scores
@@ -180,7 +241,7 @@ def compute_classification_loss(pred, targets, cfg, device):
 
     for i, pred_batch in enumerate(pred):
         for j, pred_anchor in enumerate(pred_batch):
-            target_mask = targets[:, :, 0] == i  # Filter targets for the current batch index
+            target_mask = targets[:, 0] == i  # Filter targets for the current batch index
             if target_mask.any():
                 class_pred = pred_anchor[target_mask]  # Predicted class scores
                 class_target = targets[target_mask, 1].long()  # Target class indices
