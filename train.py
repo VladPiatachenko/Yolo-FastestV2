@@ -1,22 +1,35 @@
 import os
 import math
+import time
 import argparse
 import numpy as np
 from tqdm import tqdm
+from numpy.testing._private.utils import print_assert_equal
+
 import torch
 from torch import optim
+from torch.utils.data import dataset
+from numpy.core.fromnumeric import shape
+
 from torchsummary import summary
-from datetime import datetime
 
 import utils.loss
 import utils.utils
 import utils.datasets
 from model.detector import Detector
+import re
+from datetime import datetime  # Import datetime module for timestamp
+
+# Define a function to extract the starting epoch from the model file name
+def extract_start_epoch(model_path):
+    filename = os.path.basename(model_path)
+    match = re.search(r'-(\d+)-epoch-', filename)
+    if match:
+        return int(match.group(1))
+    else:
+        return 0
 
 if __name__ == '__main__':
-    # Specify the backend device (CUDA or CPU)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
     # Specify the training configuration file
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default='',
@@ -28,41 +41,8 @@ if __name__ == '__main__':
     opt = parser.parse_args()
     cfg = utils.utils.load_datafile(opt.data)
 
-    # Check if the 'loss-configure' section exists in the configuration file
-    if "loss-configure" in cfg:
-        # Check if 'box_loss_weight' key exists in the 'loss-configure' section
-        if "box_loss_weight" in cfg["loss-configure"]:
-            box_loss_weight = cfg["loss-configure"]["box_loss_weight"]
-        else:
-            # Default value if 'box_loss_weight' is not specified
-            box_loss_weight = 1.0
-    else:
-        # Default value if 'loss-configure' section is not present
-        box_loss_weight = 1.0
-
-
-    # Set default values for missing keys
-    cfg.setdefault("loss-configure", {})
-    cfg["loss-configure"].setdefault("box_loss_weight", 1.0)
-
     print("Training configuration:")
     print(cfg)
-    
-    # Initialize the model
-    model = Detector(cfg["classes"], cfg["anchor_num"], load_param=False)
-    model = model.to(device)
-
-    # Build the SGD optimizer
-    optimizer = optim.SGD(params=model.parameters(),
-                          lr=cfg["learning_rate"],
-                          momentum=0.949,
-                          weight_decay=0.0005,
-                          )
-
-    # Learning rate decay strategy
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
-                                               milestones=cfg["steps"],
-                                               gamma=0.1)
     
     # Data loading
     train_dataset = utils.datasets.TensorDataset(cfg["train"], cfg["width"], cfg["height"], imgaug=True)
@@ -91,35 +71,43 @@ if __name__ == '__main__':
                                                  persistent_workers=True
                                                  )
 
+    # Specify the backend device (CUDA or CPU)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     # Load saved model if resuming training
     if opt.resume and opt.model_path:
-        checkpoint = torch.load(opt.model_path, map_location=torch.device('cpu'))
-        if 'epoch' in checkpoint:
-            start_epoch = checkpoint['epoch'] + 1  # Start from the next epoch
-            model.load_state_dict(checkpoint['model_state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-            best_ap = checkpoint['best_ap']
-            print("Resuming training from epoch %d, model: %s" % (start_epoch, opt.model_path))
-            # Define the model here so that it's accessible for summary
-            summary(model, input_size=(3, cfg["height"], cfg["width"]))
-        else:
-            print("Error: 'epoch' key not found in the checkpoint file.")
-            # Handle the error appropriately, e.g., start from epoch 0 or exit the program
+        start_epoch = extract_start_epoch(opt.model_path)
+        model = Detector(cfg["classes"], cfg["anchor_num"], load_param=True)
+        model = model.to(device)
+        model.load_state_dict(torch.load(opt.model_path))
+        print("Resuming training from epoch %d, model: %s" % (start_epoch, opt.model_path))
     else:
         start_epoch = 0
         print("Starting training from scratch")
-        # Define the model here so that it's accessible for summary
-        summary(model, input_size=(3, cfg["height"], cfg["width"]))
+        model = Detector(cfg["classes"], cfg["anchor_num"], load_param=False)
+        model = model.to(device)
+        load_param = False  # Set load_param to False when starting from scratch
 
     # Initialize the model structure
     summary(model, input_size=(3, cfg["height"], cfg["width"]))
+
+    # Build the SGD optimizer
+    optimizer = optim.SGD(params=model.parameters(),
+                          lr=cfg["learning_rate"],
+                          momentum=0.949,
+                          weight_decay=0.0005,
+                          )
+
+    # Learning rate decay strategy
+    scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
+                                               milestones=cfg["steps"],
+                                               gamma=0.1)
 
     print('Starting training for %g epochs...' % (cfg["epochs"] - start_epoch))
 
     batch_num = 0
     best_ap = 0.0  # Track the best average precision
-    best_model_path = ''  # Initialize the best model path variable
+    best_model_path = ""  # Path to save the best model
     for epoch in range(start_epoch, cfg["epochs"]):
         model.train()
         pbar = tqdm(train_dataloader)
@@ -129,23 +117,31 @@ if __name__ == '__main__':
             imgs = imgs.to(device).float() / 255.0
             targets = targets.to(device)
 
-            # Smooth the target labels
-            #smooth_targets = utils.loss.smooth_labels(targets)
-
             # Model inference
             preds = model(imgs)
-            
-            # Loss calculation with label smoothing
+            # Loss calculation
             iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, targets, cfg, device)
 
             # Backpropagation to compute gradients
-            optimizer.zero_grad()
             total_loss.backward()
-            optimizer.step()
+
+            # Learning rate warm-up
+            for g in optimizer.param_groups:
+                warmup_num =  5 * len(train_dataloader)
+                if batch_num <= warmup_num:
+                    scale = math.pow(batch_num/warmup_num, 4)
+                    g['lr'] = cfg["learning_rate"] * scale
+
+                lr = g["lr"]
+
+            # Update model parameters
+            if batch_num % cfg["subdivisions"] == 0:
+                optimizer.step()
+                optimizer.zero_grad()
 
             # Print relevant information
             info = "Epoch:%d LR:%f CIou:%f Obj:%f Cls:%f Total:%f" % (
-                    epoch, optimizer.param_groups[0]['lr'], iou_loss, obj_loss, cls_loss, total_loss)
+                    epoch, lr, iou_loss, obj_loss, cls_loss, total_loss)
             pbar.set_description(info)
 
             batch_num += 1
@@ -163,14 +159,8 @@ if __name__ == '__main__':
         if AP > best_ap:
             best_ap = AP
             current_date = datetime.now().strftime('%Y-%m-%d')
-            best_model_path = f"/content/drive/MyDrive/checkpoints/{cfg['model_name']}-best-model-{current_date}.pth"
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
-                'best_ap': best_ap,
-            }, best_model_path)
+            best_model_path = f"/content/drive/MyDrive/checkpoints/{cfg['model_name']}-best-model-{epoch}-epoch-{current_date}.pth"
+            torch.save(model.state_dict(), best_model_path)
             print(f"Checkpoint saved at: {best_model_path}")
 
         # Adjust learning rate
