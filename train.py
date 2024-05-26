@@ -6,6 +6,7 @@ from tqdm import tqdm
 import torch
 from torch import optim
 from torchsummary import summary
+from datetime import datetime
 
 import utils.loss
 import utils.utils
@@ -129,13 +130,13 @@ if __name__ == '__main__':
             targets = targets.to(device)
 
             # Smooth the target labels
-            smooth_targets = utils.loss.smooth_labels(targets)
+            #smooth_targets = utils.loss.smooth_labels(targets)
 
             # Model inference
             preds = model(imgs)
             
             # Loss calculation with label smoothing
-            iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, smooth_targets, cfg, device)
+            iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, targets, cfg, device)
 
             # Backpropagation to compute gradients
             optimizer.zero_grad()
@@ -161,8 +162,8 @@ if __name__ == '__main__':
         # Update best model if current model has better AP
         if AP > best_ap:
             best_ap = AP
-            # Save model along with current epoch number
-            best_model_path = f"/content/drive/MyDrive/checkpoints/{cfg['model_name']}-best-model.pth"
+            current_date = datetime.now().strftime('%Y-%m-%d')
+            best_model_path = f"/content/drive/MyDrive/checkpoints/{cfg['model_name']}-best-model-{current_date}.pth"
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
