@@ -10,7 +10,7 @@ learning_rate=0.0005
 
 [model-configure]
 pre_weights=None
-classes=10
+classes=18
 width=352
 height=352
 anchor_num=3
