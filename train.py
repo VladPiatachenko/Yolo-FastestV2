@@ -1,34 +1,3 @@
-import os
-import math
-import time
-import argparse
-import numpy as np
-from tqdm import tqdm
-from numpy.testing._private.utils import print_assert_equal
-
-import torch
-from torch import optim
-from torch.utils.data import dataset
-from numpy.core.fromnumeric import shape
-
-from torchsummary import summary
-
-import utils.loss
-import utils.utils
-import utils.datasets
-from model.detector import Detector
-import re
-from datetime import datetime  # Import datetime module for timestamp
-
-# Define a function to extract the starting epoch from the model file name
-def extract_start_epoch(model_path):
-    filename = os.path.basename(model_path)
-    match = re.search(r'-(\d+)-epoch-', filename)
-    if match:
-        return int(match.group(1))
-    else:
-        return 0
-
 if __name__ == '__main__':
     # Specify the training configuration file
     parser = argparse.ArgumentParser()
@@ -79,7 +48,10 @@ if __name__ == '__main__':
         start_epoch = extract_start_epoch(opt.model_path)
         model = Detector(cfg["classes"], cfg["anchor_num"], load_param=True)
         model = model.to(device)
-        model.load_state_dict(torch.load(opt.model_path))
+        if torch.cuda.is_available():
+            model.load_state_dict(torch.load(opt.model_path))
+        else:
+            model.load_state_dict(torch.load(opt.model_path, map_location=torch.device('cpu')))
         print("Resuming training from epoch %d, model: %s" % (start_epoch, opt.model_path))
     else:
         start_epoch = 0
