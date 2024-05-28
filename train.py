@@ -38,11 +38,10 @@ if __name__ == '__main__':
                         help='Whether to resume training from a saved model')
     parser.add_argument('--model_path', type=str, default='',
                         help='Path to the saved model file (.pth)')
+    parser.add_argument('--save_location', type=str, default='',
+                        help='Path to save the best model checkpoint')
     opt = parser.parse_args()
     cfg = utils.utils.load_datafile(opt.data)
-
-    print("Training configuration:")
-    print(cfg)
     
     # Data loading
     train_dataset = utils.datasets.TensorDataset(cfg["train"], cfg["width"], cfg["height"], imgaug=True)
@@ -162,11 +161,11 @@ if __name__ == '__main__':
         if AP > best_ap:
             best_ap = AP
             current_date = datetime.now().strftime('%Y-%m-%d')
-            best_model_path = f"/content/drive/MyDrive/checkpoints/{cfg['model_name']}-best-model-{epoch}-epoch-{current_date}.pth"
+            best_model_path = f"{opt.save_location}/{cfg['model_name']}-best-model-{epoch}-epoch-{current_date}.pth"
             torch.save(model.state_dict(), best_model_path)
             print(f"Checkpoint saved at: {best_model_path}")
-
-        # Adjust learning rate
+        
+                # Adjust learning rate
         scheduler.step()
 
     print(f"Best model saved at: {best_model_path}")
