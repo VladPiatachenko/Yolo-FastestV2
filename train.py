@@ -1,3 +1,34 @@
+import os
+import math
+import time
+import argparse
+import numpy as np
+from tqdm import tqdm
+from numpy.testing._private.utils import print_assert_equal
+
+import torch
+from torch import optim
+from torch.utils.data import dataset
+from numpy.core.fromnumeric import shape
+
+from torchsummary import summary
+
+import utils.loss
+import utils.utils
+import utils.datasets
+from model.detector import Detector
+import re
+from datetime import datetime  # Import datetime module for timestamp
+
+# Define a function to extract the starting epoch from the model file name
+def extract_start_epoch(model_path):
+    filename = os.path.basename(model_path)
+    match = re.search(r'-(\d+)-epoch-', filename)
+    if match:
+        return int(match.group(1))
+    else:
+        return 0
+        
 if __name__ == '__main__':
     # Specify the training configuration file
     parser = argparse.ArgumentParser()
