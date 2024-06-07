@@ -4,21 +4,17 @@ import time
 import argparse
 import numpy as np
 from tqdm import tqdm
-from numpy.testing._private.utils import print_assert_equal
-
 import torch
 from torch import optim
 from torch.utils.data import dataset
-from numpy.core.fromnumeric import shape
-
 from torchsummary import summary
-
 import utils.loss
 import utils.utils
 import utils.datasets
 from model.detector import Detector
 import re
-from datetime import datetime  # Import datetime module for timestamp
+from datetime import datetime
+import torch.nn.functional as F
 
 # Define a function to extract the starting epoch from the model file name
 def extract_start_epoch(model_path):
@@ -29,6 +25,11 @@ def extract_start_epoch(model_path):
     else:
         return 0
         
+# Define a function for label smoothing
+def smooth_labels(labels, epsilon, num_classes):
+    smoothed_labels = labels * (1 - epsilon) + epsilon / num_classes
+    return smoothed_labels
+
 if __name__ == '__main__':
     # Specify the training configuration file
     parser = argparse.ArgumentParser()
@@ -74,7 +75,7 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load saved model if resuming training
-    if opt.resume and opt.model_path:
+    if (opt.resume and opt.model_path):
         start_epoch = extract_start_epoch(opt.model_path)
         model = Detector(cfg["classes"], cfg["anchor_num"], load_param=True)
         model = model.to(device)
@@ -119,6 +120,9 @@ if __name__ == '__main__':
             imgs = imgs.to(device).float() / 255.0
             targets = targets.to(device)
 
+            # Apply label smoothing
+            targets = smooth_labels(targets, epsilon=0.1, num_classes=cfg["classes"])
+
             # Model inference
             preds = model(imgs)
             # Loss calculation
@@ -131,7 +135,7 @@ if __name__ == '__main__':
             for g in optimizer.param_groups:
                 warmup_num =  5 * len(train_dataloader)
                 if batch_num <= warmup_num:
-                    scale = math.pow(batch_num/warmup_num, 4)
+                    scale = math.pow(batch_num / warmup_num, 4)
                     g['lr'] = cfg["learning_rate"] * scale
 
                 lr = g["lr"]
@@ -165,7 +169,7 @@ if __name__ == '__main__':
             torch.save(model.state_dict(), best_model_path)
             print(f"Checkpoint saved at: {best_model_path}")
         
-                # Adjust learning rate
+        # Adjust learning rate
         scheduler.step()
 
     print(f"Best model saved at: {best_model_path}")
