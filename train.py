@@ -13,8 +13,7 @@ import utils.utils
 import utils.datasets
 from model.detector import Detector
 import re
-from datetime import datetime
-import torch.nn.functional as F
+from datetime import datetime  # Import datetime module for timestamp
 
 # Define a function to extract the starting epoch from the model file name
 def extract_start_epoch(model_path):
@@ -119,14 +118,23 @@ if __name__ == '__main__':
             # Data preprocessing
             imgs = imgs.to(device).float() / 255.0
             targets = targets.to(device)
+            
+            # Print original targets before smoothing
+            print(f"Original targets: {targets[:2]}")  # Print first two target sets for brevity
 
             # Apply label smoothing
-            targets = smooth_labels(targets, epsilon=0.1, num_classes=cfg["classes"])
+            targets[..., 5:] = smooth_labels(targets[..., 5:], epsilon=0.1, num_classes=cfg["classes"])
+            
+            # Print smoothed targets
+            print(f"Smoothed targets: {targets[:2]}")  # Print first two smoothed target sets for brevity
 
             # Model inference
             preds = model(imgs)
             # Loss calculation
             iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, targets, cfg, device)
+
+            # Print loss values
+            print(f"Loss values - IoU Loss: {iou_loss}, Obj Loss: {obj_loss}, Cls Loss: {cls_loss}, Total Loss: {total_loss}")
 
             # Backpropagation to compute gradients
             total_loss.backward()
