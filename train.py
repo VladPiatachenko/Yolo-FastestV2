@@ -120,13 +120,13 @@ if __name__ == '__main__':
             targets = targets.to(device)
             
             # Print original targets before smoothing
-            print(f"Original targets: {targets[:2]}")  # Print first two target sets for brevity
+            #print(f"Original targets: {targets[:2]}")  # Print first two target sets for brevity
 
             # Apply label smoothing
-            targets[..., 5:] = smooth_labels(targets[..., 5:], epsilon=0.1, num_classes=cfg["classes"])
+            targets[..., 5:] = smooth_labels(targets[..., 5:], epsilon=0.05, num_classes=cfg["classes"])
             
             # Print smoothed targets
-            print(f"Smoothed targets: {targets[:2]}")  # Print first two smoothed target sets for brevity
+            #print(f"Smoothed targets: {targets[:2]}")  # Print first two smoothed target sets for brevity
 
             # Model inference
             preds = model(imgs)
@@ -134,7 +134,7 @@ if __name__ == '__main__':
             iou_loss, obj_loss, cls_loss, total_loss = utils.loss.compute_loss(preds, targets, cfg, device)
 
             # Print loss values
-            print(f"Loss values - IoU Loss: {iou_loss}, Obj Loss: {obj_loss}, Cls Loss: {cls_loss}, Total Loss: {total_loss}")
+            #print(f"Loss values - IoU Loss: {iou_loss}, Obj Loss: {obj_loss}, Cls Loss: {cls_loss}, Total Loss: {total_loss}")
 
             # Backpropagation to compute gradients
             total_loss.backward()
