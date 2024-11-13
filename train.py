@@ -19,6 +19,9 @@ import utils.datasets
 from model.detector import Detector
 import re
 from datetime import datetime  # Import datetime module for timestamp
+import wandb
+
+wandb.init(project="Erlkonig", name="training_run")
 
 # Define a function to extract the starting epoch from the model file name
 def extract_start_epoch(model_path):
@@ -141,6 +144,16 @@ if __name__ == '__main__':
                 optimizer.step()
                 optimizer.zero_grad()
 
+            wandb.log({
+                  "epoch": epoch,
+                  "batch": batch_num,
+                  "learning_rate": lr,
+                  "iou_loss": iou_loss.item(),
+                  "obj_loss": obj_loss.item(),
+                  "cls_loss": cls_loss.item(),
+                  "total_loss": total_loss.item()
+              })
+
             # Print relevant information
             info = "Epoch:%d LR:%f CIou:%f Obj:%f Cls:%f Total:%f" % (
                     epoch, lr, iou_loss, obj_loss, cls_loss, total_loss)
@@ -156,6 +169,14 @@ if __name__ == '__main__':
         print("Compute PR...")
         precision, recall, _, f1 = utils.utils.evaluation(val_dataloader, cfg, model, device, 0.3)
         print("Precision:%f Recall:%f AP:%f F1:%f"%(precision, recall, AP, f1))
+        
+        wandb.log({
+            "epoch": epoch,
+            "precision": precision,
+            "recall": recall,
+            "AP": AP,
+            "F1": f1
+        })
 
         # Update best model if current model has better AP
         if AP > best_ap:
@@ -164,8 +185,9 @@ if __name__ == '__main__':
             best_model_path = f"{opt.save_location}/{cfg['model_name']}-best-model-{epoch}-epoch-{current_date}.pth"
             torch.save(model.state_dict(), best_model_path)
             print(f"Checkpoint saved at: {best_model_path}")
-        
+            wandb.log_artifact(best_model_path, name="best_model", type="model")
                 # Adjust learning rate
         scheduler.step()
 
     print(f"Best model saved at: {best_model_path}")
+    wandb.finish()
